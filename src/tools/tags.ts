@@ -4,7 +4,12 @@ import { ApiClient } from "../api-client.js";
 import { API_PATHS } from "../constants.js";
 import type { Tag, PaginatedResponse } from "../types.js";
 
-export function registerTagTools(server: McpServer, api: ApiClient, orgId: string) {
+export function registerTagTools(
+  server: McpServer,
+  api: ApiClient,
+  orgId: string,
+  readOnly = true
+) {
   server.registerTool(
     "solidtime_list_tags",
     {
@@ -29,6 +34,8 @@ export function registerTagTools(server: McpServer, api: ApiClient, orgId: strin
       return { content: [{ type: "text", text: lines.join("\n\n") }] };
     }
   );
+
+  if (readOnly) return;
 
   server.registerTool(
     "solidtime_create_tag",

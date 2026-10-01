@@ -22,7 +22,10 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
+
+      - name: Dependency audit
+        run: npm audit --omit=dev
 
       - name: Typecheck
         run: npm run typecheck
@@ -35,3 +38,6 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Security tests
+        run: npm test

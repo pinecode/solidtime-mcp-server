@@ -6,7 +6,12 @@ import { coerceBoolean } from "../schemas.js";
 import { formatCurrency, formatDuration } from "../formatting.js";
 import type { Project, PaginatedResponse } from "../types.js";
 
-export function registerProjectTools(server: McpServer, api: ApiClient, orgId: string) {
+export function registerProjectTools(
+  server: McpServer,
+  api: ApiClient,
+  orgId: string,
+  readOnly = true
+) {
   server.registerTool(
     "solidtime_list_projects",
     {
@@ -39,6 +44,8 @@ export function registerProjectTools(server: McpServer, api: ApiClient, orgId: s
       return { content: [{ type: "text", text: lines.join("\n\n") }] };
     }
   );
+
+  if (readOnly) return;
 
   server.registerTool(
     "solidtime_create_project",

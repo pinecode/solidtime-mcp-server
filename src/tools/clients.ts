@@ -4,7 +4,12 @@ import { ApiClient } from "../api-client.js";
 import { API_PATHS } from "../constants.js";
 import type { Client, PaginatedResponse } from "../types.js";
 
-export function registerClientTools(server: McpServer, api: ApiClient, orgId: string) {
+export function registerClientTools(
+  server: McpServer,
+  api: ApiClient,
+  orgId: string,
+  readOnly = true
+) {
   server.registerTool(
     "solidtime_list_clients",
     {
@@ -39,6 +44,8 @@ export function registerClientTools(server: McpServer, api: ApiClient, orgId: st
       return { content: [{ type: "text", text: lines.join("\n\n") }] };
     }
   );
+
+  if (readOnly) return;
 
   server.registerTool(
     "solidtime_create_client",

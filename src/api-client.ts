@@ -1,18 +1,11 @@
-import { DEFAULT_API_URL } from "./constants.js";
-
 export class SolidTimeApiError extends Error {
-  constructor(
-    public status: number,
-    public body: unknown
-  ) {
-    super(getErrorMessage(status, body));
+  constructor(public status: number) {
+    super(getErrorMessage(status));
     this.name = "SolidTimeApiError";
   }
 }
 
-function getErrorMessage(status: number, body: unknown): string {
-  const detail = typeof body === "object" && body !== null ? JSON.stringify(body) : String(body);
-
+function getErrorMessage(status: number): string {
   switch (status) {
     case 401:
       return "Authentication failed. Verify your SOLIDTIME_API_TOKEN is valid.";
@@ -21,40 +14,56 @@ function getErrorMessage(status: number, body: unknown): string {
     case 404:
       return "Resource not found. Use the list tools (e.g. solidtime_list_projects) to find valid IDs.";
     case 422:
-      return `Validation error: ${formatValidationErrors(body)}`;
+      return "Validation failed. Check the tool arguments.";
     case 429:
       return "Rate limited. Wait a moment and try again.";
     default:
       if (status >= 500) return `SolidTime server error (${status}). Try again later.`;
-      return `API error ${status}: ${detail}`;
+      return `API error ${status}.`;
   }
-}
-
-function formatValidationErrors(body: unknown): string {
-  if (typeof body !== "object" || body === null) return String(body);
-  const obj = body as Record<string, unknown>;
-  if (obj.errors && typeof obj.errors === "object") {
-    return Object.entries(obj.errors as Record<string, string[]>)
-      .map(([field, msgs]) => `${field}: ${msgs.join(", ")}`)
-      .join("; ");
-  }
-  if (obj.message) return String(obj.message);
-  return JSON.stringify(body);
 }
 
 export class ApiClient {
   private baseUrl: string;
   private token: string;
 
-  constructor(baseUrl: string | undefined, token: string) {
-    this.baseUrl = (baseUrl || DEFAULT_API_URL).replace(/\/$/, "");
+  constructor(
+    baseUrl: string | undefined,
+    token: string,
+    private readOnly = true
+  ) {
+    if (!baseUrl) throw new Error("SOLIDTIME_API_URL is required.");
+    let url: URL;
+    try {
+      url = new URL(baseUrl);
+    } catch {
+      throw new Error("Invalid SOLIDTIME_API_URL.");
+    }
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      url.pathname !== "/"
+    ) {
+      throw new Error(
+        "SOLIDTIME_API_URL must be an HTTPS origin without credentials, a path, query, or fragment."
+      );
+    }
+    if (!token || /\s/.test(token)) throw new Error("Invalid SOLIDTIME_API_TOKEN.");
+    this.baseUrl = url.origin;
     this.token = token;
   }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const url = path.startsWith("/api/v1")
-      ? `${this.baseUrl}${path}`
-      : `${this.baseUrl}/api/v1${path}`;
+    if (this.readOnly && method !== "GET") throw new Error("Write operations are disabled.");
+    const url = new URL(
+      path.startsWith("/api/v1/") ? `${this.baseUrl}${path}` : `${this.baseUrl}/api/v1${path}`
+    );
+    if (url.origin !== this.baseUrl || !url.pathname.startsWith("/api/v1/")) {
+      throw new Error("Invalid API request path.");
+    }
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.token}`,
@@ -71,10 +80,12 @@ export class ApiClient {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
+        redirect: "error",
+        signal: AbortSignal.timeout(30000),
       });
-    } catch (err) {
+    } catch {
       throw new Error(
-        `Cannot reach SolidTime at ${this.baseUrl}. Check the SOLIDTIME_API_URL setting. (${err})`
+        "SolidTime request failed; redirects are blocked and requests time out after 30 seconds."
       );
     }
 
@@ -82,18 +93,14 @@ export class ApiClient {
       return undefined as T;
     }
 
-    let responseBody: unknown;
-    try {
-      responseBody = await response.json();
-    } catch {
-      responseBody = await response.text().catch(() => "");
-    }
-
     if (!response.ok) {
-      throw new SolidTimeApiError(response.status, responseBody);
+      throw new SolidTimeApiError(response.status);
     }
-
-    return responseBody as T;
+    try {
+      return (await response.json()) as T;
+    } catch {
+      throw new Error("SolidTime returned an invalid JSON response.");
+    }
   }
 
   get<T>(path: string): Promise<T> {

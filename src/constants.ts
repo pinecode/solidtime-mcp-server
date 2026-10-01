@@ -1,5 +1,3 @@
-export const DEFAULT_API_URL = "https://app.solidtime.io";
-
 export const API_PATHS = {
   me: "/users/me",
   activeTimer: "/users/me/time-entries/active",

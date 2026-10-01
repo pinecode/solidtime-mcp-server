@@ -8,16 +8,22 @@ import { registerClientTools } from "./tools/clients.js";
 import { registerTagTools } from "./tools/tags.js";
 import { registerTaskTools } from "./tools/tasks.js";
 import type { User, Member, PaginatedResponse } from "./types.js";
+import { z } from "zod";
 
 interface ServerConfig {
   apiToken: string;
   organizationId: string;
   apiUrl?: string;
+  readOnly?: boolean;
 }
 
 export async function createServer(config: ServerConfig) {
-  const api = new ApiClient(config.apiUrl, config.apiToken);
+  const readOnly = config.readOnly ?? true;
+  const api = new ApiClient(config.apiUrl, config.apiToken, readOnly);
   const orgId = config.organizationId;
+  if (!z.string().uuid().safeParse(orgId).success) {
+    throw new Error("SOLIDTIME_ORGANIZATION_ID must be a UUID.");
+  }
 
   // Resolve member_id at startup
   const userResponse = await api.get<{ data: User }>(API_PATHS.me);
@@ -28,15 +34,12 @@ export async function createServer(config: ServerConfig) {
 
   if (!member) {
     throw new Error(
-      `Could not find member for user ${user.email} (${user.id}) in organization ${orgId}. ` +
-        `Found ${members.length} members. Verify your SOLIDTIME_ORGANIZATION_ID is correct.`
+      "Could not resolve the current member. Verify SOLIDTIME_ORGANIZATION_ID and membership permissions."
     );
   }
 
   const memberId = member.id;
   const getMemberId = () => memberId;
-
-  console.error(`SolidTime MCP: Authenticated as ${user.name} (${user.email}), member ${memberId}`);
 
   const server = new McpServer({
     name: "solidtime",
@@ -44,11 +47,11 @@ export async function createServer(config: ServerConfig) {
   });
 
   registerUserTools(server, api, getMemberId);
-  registerTimeEntryTools(server, api, orgId, getMemberId);
-  registerProjectTools(server, api, orgId);
-  registerClientTools(server, api, orgId);
-  registerTagTools(server, api, orgId);
-  registerTaskTools(server, api, orgId);
+  registerTimeEntryTools(server, api, orgId, getMemberId, readOnly);
+  registerProjectTools(server, api, orgId, readOnly);
+  registerClientTools(server, api, orgId, readOnly);
+  registerTagTools(server, api, orgId, readOnly);
+  registerTaskTools(server, api, orgId, readOnly);
 
   return server;
 }

@@ -10,7 +10,8 @@ export function registerTimeEntryTools(
   server: McpServer,
   api: ApiClient,
   orgId: string,
-  getMemberId: () => string
+  getMemberId: () => string,
+  readOnly = true
 ) {
   async function getActiveTimer(): Promise<TimeEntry | null> {
     const response = await api.getOrNull<{ data: TimeEntry }>(API_PATHS.activeTimer);
@@ -40,83 +41,85 @@ export function registerTimeEntryTools(
   );
 
   // --- Start Timer ---
-  server.registerTool(
-    "solidtime_start_timer",
-    {
-      title: "Start Timer",
-      description:
-        "Start a new running timer. Checks for an existing active timer first. Use solidtime_stop_timer to stop it later.",
-      inputSchema: {
-        project_id: z.string().uuid().optional().describe("Project UUID"),
-        task_id: z.string().uuid().optional().describe("Task UUID"),
-        description: z.string().max(5000).optional().describe("What you're working on"),
-        billable: coerceBoolean.optional().describe("Whether this time is billable"),
-        tag_ids: coerceUuidArray.optional().describe("Array of tag UUIDs to attach"),
+  if (!readOnly)
+    server.registerTool(
+      "solidtime_start_timer",
+      {
+        title: "Start Timer",
+        description:
+          "Start a new running timer. Checks for an existing active timer first. Use solidtime_stop_timer to stop it later.",
+        inputSchema: {
+          project_id: z.string().uuid().optional().describe("Project UUID"),
+          task_id: z.string().uuid().optional().describe("Task UUID"),
+          description: z.string().max(5000).optional().describe("What you're working on"),
+          billable: coerceBoolean.optional().describe("Whether this time is billable"),
+          tag_ids: coerceUuidArray.optional().describe("Array of tag UUIDs to attach"),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
       },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        idempotentHint: false,
-        openWorldHint: true,
-      },
-    },
-    async (params) => {
-      const existing = await getActiveTimer();
-      if (existing) {
+      async (params) => {
+        const existing = await getActiveTimer();
+        if (existing) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `A timer is already running (started ${formatDateTime(existing.start)}). Stop it first with solidtime_stop_timer.\n\n${formatTimeEntry(existing)}`,
+              },
+            ],
+          };
+        }
+
+        const body: Record<string, unknown> = {
+          member_id: getMemberId(),
+          start: nowUTC(),
+          billable: params.billable ?? false,
+        };
+        if (params.project_id) body.project_id = params.project_id;
+        if (params.task_id) body.task_id = params.task_id;
+        if (params.description) body.description = params.description;
+        if (params.tag_ids) body.tags = params.tag_ids;
+
+        const result = await api.post<{ data: TimeEntry }>(API_PATHS.timeEntries(orgId), body);
         return {
-          content: [
-            {
-              type: "text",
-              text: `A timer is already running (started ${formatDateTime(existing.start)}). Stop it first with solidtime_stop_timer.\n\n${formatTimeEntry(existing)}`,
-            },
-          ],
+          content: [{ type: "text", text: `Timer started.\n\n${formatTimeEntry(result.data)}` }],
         };
       }
-
-      const body: Record<string, unknown> = {
-        member_id: getMemberId(),
-        start: nowUTC(),
-        billable: params.billable ?? false,
-      };
-      if (params.project_id) body.project_id = params.project_id;
-      if (params.task_id) body.task_id = params.task_id;
-      if (params.description) body.description = params.description;
-      if (params.tag_ids) body.tags = params.tag_ids;
-
-      const result = await api.post<{ data: TimeEntry }>(API_PATHS.timeEntries(orgId), body);
-      return {
-        content: [{ type: "text", text: `Timer started.\n\n${formatTimeEntry(result.data)}` }],
-      };
-    }
-  );
+    );
 
   // --- Stop Timer ---
-  server.registerTool(
-    "solidtime_stop_timer",
-    {
-      title: "Stop Timer",
-      description: "Stop the currently running timer by setting end time to now.",
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
+  if (!readOnly)
+    server.registerTool(
+      "solidtime_stop_timer",
+      {
+        title: "Stop Timer",
+        description: "Stop the currently running timer by setting end time to now.",
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
       },
-    },
-    async () => {
-      const existing = await getActiveTimer();
-      if (!existing) {
-        return { content: [{ type: "text", text: "No active timer to stop." }] };
-      }
+      async () => {
+        const existing = await getActiveTimer();
+        if (!existing) {
+          return { content: [{ type: "text", text: "No active timer to stop." }] };
+        }
 
-      const result = await api.put<{ data: TimeEntry }>(API_PATHS.timeEntry(orgId, existing.id), {
-        end: nowUTC(),
-      });
-      return {
-        content: [{ type: "text", text: `Timer stopped.\n\n${formatTimeEntry(result.data)}` }],
-      };
-    }
-  );
+        const result = await api.put<{ data: TimeEntry }>(API_PATHS.timeEntry(orgId, existing.id), {
+          end: nowUTC(),
+        });
+        return {
+          content: [{ type: "text", text: `Timer stopped.\n\n${formatTimeEntry(result.data)}` }],
+        };
+      }
+    );
 
   // --- List Time Entries ---
   server.registerTool(
@@ -197,116 +200,123 @@ export function registerTimeEntryTools(
   );
 
   // --- Create Time Entry ---
-  server.registerTool(
-    "solidtime_create_time_entry",
-    {
-      title: "Create Time Entry",
-      description:
-        "Create a completed time entry with start and end times. For running timers, use solidtime_start_timer instead.",
-      inputSchema: {
-        start: z.string().describe("Start time in UTC (e.g. 2026-03-03T09:00:00Z)"),
-        end: z.string().describe("End time in UTC (e.g. 2026-03-03T10:30:00Z)"),
-        project_id: z.string().uuid().optional().describe("Project UUID"),
-        task_id: z.string().uuid().optional().describe("Task UUID"),
-        description: z.string().max(5000).optional().describe("What was done"),
-        billable: coerceBoolean
-          .optional()
-          .describe("Whether this time is billable (default false)"),
-        tag_ids: coerceUuidArray.optional().describe("Array of tag UUIDs to attach"),
+  if (!readOnly)
+    server.registerTool(
+      "solidtime_create_time_entry",
+      {
+        title: "Create Time Entry",
+        description:
+          "Create a completed time entry with start and end times. For running timers, use solidtime_start_timer instead.",
+        inputSchema: {
+          start: z.string().describe("Start time in UTC (e.g. 2026-03-03T09:00:00Z)"),
+          end: z.string().describe("End time in UTC (e.g. 2026-03-03T10:30:00Z)"),
+          project_id: z.string().uuid().optional().describe("Project UUID"),
+          task_id: z.string().uuid().optional().describe("Task UUID"),
+          description: z.string().max(5000).optional().describe("What was done"),
+          billable: coerceBoolean
+            .optional()
+            .describe("Whether this time is billable (default false)"),
+          tag_ids: coerceUuidArray.optional().describe("Array of tag UUIDs to attach"),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
       },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        idempotentHint: false,
-        openWorldHint: true,
-      },
-    },
-    async (params) => {
-      const body: Record<string, unknown> = {
-        member_id: getMemberId(),
-        start: params.start,
-        end: params.end,
-        billable: params.billable ?? false,
-      };
-      if (params.project_id) body.project_id = params.project_id;
-      if (params.task_id) body.task_id = params.task_id;
-      if (params.description) body.description = params.description;
-      if (params.tag_ids) body.tags = params.tag_ids;
+      async (params) => {
+        const body: Record<string, unknown> = {
+          member_id: getMemberId(),
+          start: params.start,
+          end: params.end,
+          billable: params.billable ?? false,
+        };
+        if (params.project_id) body.project_id = params.project_id;
+        if (params.task_id) body.task_id = params.task_id;
+        if (params.description) body.description = params.description;
+        if (params.tag_ids) body.tags = params.tag_ids;
 
-      const result = await api.post<{ data: TimeEntry }>(API_PATHS.timeEntries(orgId), body);
-      return {
-        content: [{ type: "text", text: `Time entry created.\n\n${formatTimeEntry(result.data)}` }],
-      };
-    }
-  );
+        const result = await api.post<{ data: TimeEntry }>(API_PATHS.timeEntries(orgId), body);
+        return {
+          content: [
+            { type: "text", text: `Time entry created.\n\n${formatTimeEntry(result.data)}` },
+          ],
+        };
+      }
+    );
 
   // --- Update Time Entry ---
-  server.registerTool(
-    "solidtime_update_time_entry",
-    {
-      title: "Update Time Entry",
-      description: "Update an existing time entry. Only provided fields will be changed.",
-      inputSchema: {
-        id: z.string().uuid().describe("Time entry UUID to update"),
-        start: z.string().optional().describe("New start time in UTC"),
-        end: z.string().optional().describe("New end time in UTC"),
-        project_id: z.string().uuid().optional().describe("New project UUID"),
-        task_id: z.string().uuid().optional().describe("New task UUID"),
-        description: z.string().max(5000).optional().describe("New description"),
-        billable: coerceBoolean.optional().describe("New billable status"),
-        tag_ids: z
-          .array(z.string().uuid())
-          .optional()
-          .describe("New tag UUIDs (replaces existing tags)"),
+  if (!readOnly)
+    server.registerTool(
+      "solidtime_update_time_entry",
+      {
+        title: "Update Time Entry",
+        description: "Update an existing time entry. Only provided fields will be changed.",
+        inputSchema: {
+          id: z.string().uuid().describe("Time entry UUID to update"),
+          start: z.string().optional().describe("New start time in UTC"),
+          end: z.string().optional().describe("New end time in UTC"),
+          project_id: z.string().uuid().optional().describe("New project UUID"),
+          task_id: z.string().uuid().optional().describe("New task UUID"),
+          description: z.string().max(5000).optional().describe("New description"),
+          billable: coerceBoolean.optional().describe("New billable status"),
+          tag_ids: z
+            .array(z.string().uuid())
+            .optional()
+            .describe("New tag UUIDs (replaces existing tags)"),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
       },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-      },
-    },
-    async (params) => {
-      const body: Record<string, unknown> = {};
-      if (params.start !== undefined) body.start = params.start;
-      if (params.end !== undefined) body.end = params.end;
-      if (params.project_id !== undefined) body.project_id = params.project_id;
-      if (params.task_id !== undefined) body.task_id = params.task_id;
-      if (params.description !== undefined) body.description = params.description;
-      if (params.billable !== undefined) body.billable = params.billable;
-      if (params.tag_ids !== undefined) body.tags = params.tag_ids;
+      async (params) => {
+        const body: Record<string, unknown> = {};
+        if (params.start !== undefined) body.start = params.start;
+        if (params.end !== undefined) body.end = params.end;
+        if (params.project_id !== undefined) body.project_id = params.project_id;
+        if (params.task_id !== undefined) body.task_id = params.task_id;
+        if (params.description !== undefined) body.description = params.description;
+        if (params.billable !== undefined) body.billable = params.billable;
+        if (params.tag_ids !== undefined) body.tags = params.tag_ids;
 
-      const result = await api.put<{ data: TimeEntry }>(
-        API_PATHS.timeEntry(orgId, params.id),
-        body
-      );
-      return {
-        content: [{ type: "text", text: `Time entry updated.\n\n${formatTimeEntry(result.data)}` }],
-      };
-    }
-  );
+        const result = await api.put<{ data: TimeEntry }>(
+          API_PATHS.timeEntry(orgId, params.id),
+          body
+        );
+        return {
+          content: [
+            { type: "text", text: `Time entry updated.\n\n${formatTimeEntry(result.data)}` },
+          ],
+        };
+      }
+    );
 
   // --- Delete Time Entry ---
-  server.registerTool(
-    "solidtime_delete_time_entry",
-    {
-      title: "Delete Time Entry",
-      description: "Permanently delete a time entry. This cannot be undone.",
-      inputSchema: {
-        id: z.string().uuid().describe("Time entry UUID to delete"),
+  if (!readOnly)
+    server.registerTool(
+      "solidtime_delete_time_entry",
+      {
+        title: "Delete Time Entry",
+        description: "Permanently delete a time entry. This cannot be undone.",
+        inputSchema: {
+          id: z.string().uuid().describe("Time entry UUID to delete"),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
       },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-        openWorldHint: true,
-      },
-    },
-    async (params) => {
-      await api.delete(API_PATHS.timeEntry(orgId, params.id));
-      return { content: [{ type: "text", text: `Time entry ${params.id} deleted.` }] };
-    }
-  );
+      async (params) => {
+        await api.delete(API_PATHS.timeEntry(orgId, params.id));
+        return { content: [{ type: "text", text: `Time entry ${params.id} deleted.` }] };
+      }
+    );
 
   // --- Time Entry Report ---
   server.registerTool(

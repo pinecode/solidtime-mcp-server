@@ -6,7 +6,12 @@ import { coerceBoolean } from "../schemas.js";
 import { formatDuration } from "../formatting.js";
 import type { Task, PaginatedResponse } from "../types.js";
 
-export function registerTaskTools(server: McpServer, api: ApiClient, orgId: string) {
+export function registerTaskTools(
+  server: McpServer,
+  api: ApiClient,
+  orgId: string,
+  readOnly = true
+) {
   server.registerTool(
     "solidtime_list_tasks",
     {
@@ -41,6 +46,8 @@ export function registerTaskTools(server: McpServer, api: ApiClient, orgId: stri
       return { content: [{ type: "text", text: lines.join("\n\n") }] };
     }
   );
+
+  if (readOnly) return;
 
   server.registerTool(
     "solidtime_create_task",
