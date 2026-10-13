@@ -7,13 +7,10 @@ export function formatDuration(seconds: number): string {
   return `${seconds}s`;
 }
 
-export function formatCurrency(cents: number): string {
-  const amount = cents / 100;
-  return amount.toLocaleString("en-US", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-  });
+export function formatCurrency(minorUnits: number, currency: string): string {
+  const formatter = new Intl.NumberFormat("en-US", { style: "currency", currency });
+  const digits = formatter.resolvedOptions().maximumFractionDigits ?? 2;
+  return formatter.format(minorUnits / 10 ** digits);
 }
 
 export function formatDateTime(utcString: string): string {

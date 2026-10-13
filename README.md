@@ -7,7 +7,7 @@ MCP server for [SolidTime](https://www.solidtime.io/) — the open-source time t
 
 ## Features
 
-- **8 read-only tools by default**, or 22 tools with explicitly enabled writes
+- **17 read-only tools by default**, or 36 tools with explicitly enabled writes
 - **Start/stop timers** with automatic active-timer detection
 - **Aggregated reports** grouped by day, week, project, client, and more
 - **Auto member_id resolution** — no manual configuration needed
@@ -58,7 +58,7 @@ Get your API token from **SolidTime > Settings > API**.
 ## Codex Configuration
 
 Codex starts this server as a local stdio process. It does not need a public
-MCP URL or an open listening port. Use Node.js 18 or newer.
+MCP URL or an open listening port. Use Node.js 20 or newer.
 
 1. Build the checkout as above.
 2. Activate personal API tokens on self-hosted Solidtime if necessary:
@@ -111,7 +111,7 @@ SOLIDTIME_READ_ONLY = "true"
    or Codex, then check `/mcp` and ask for a read-only report. Registration alone
    does not prove that authentication and tool calls work.
 
-The default 8 tools cannot change data. Setting `SOLIDTIME_READ_ONLY=false`
+The default 17 tools cannot change data. Setting `SOLIDTIME_READ_ONLY=false`
 enables writes in the server; Codex's allowlist must also be changed to expose
 them. Only do that intentionally with an appropriately permissioned token.
 
@@ -243,3 +243,59 @@ npm run inspector    # Test with MCP Inspector
 ## License
 
 MIT
+# Employee Expenses and Inline Reports (1.1.0)
+
+The PineCode Solidtime **0.21.1** extension adds historical employee expenses.
+It is separate from upstream customer billing: the original API `cost` field still
+means billable revenue. Standard tools continue to work on upstream Solidtime;
+expense tools require the extension and return a normal API error on older servers.
+
+- `solidtime_get_labor_cost_report`: interactive MCP App plus structured JSON, with dates,
+  employee/project/client/task/tag filters, grouping, display currency and pagination.
+- `solidtime_get_labor_cost_entries`: entry details, effective rates, both currencies,
+  completeness and missing-data flags.
+- `solidtime_get_labor_cost_rates`: effective-dated employee/project history, including cancellations.
+- `solidtime_get_labor_cost_settings`: organization expense timezone and project currencies.
+- `solidtime_export_labor_costs`: dual-currency CSV/PDF as a private MCP resource link.
+- `solidtime_list_members`, `solidtime_get_organization`, `solidtime_get_project`,
+  `solidtime_get_currencies`: discover IDs and currencies without guessing.
+
+With `SOLIDTIME_READ_ONLY=false`, Owner/Admin may also use
+`solidtime_create_labor_cost_rate`, `solidtime_update_labor_cost_rate`,
+`solidtime_cancel_labor_cost_rate`, `solidtime_update_expense_timezone` and
+`solidtime_update_project_expense_currency`. Rate changes/cancellations can affect
+history: confirm the effective interval with the user before invoking them. The UI
+widget is read-only and does not expose these mutation controls.
+
+Example: ask for one employee's monthly report with `currency: "RUB"`. The report
+shows original USD and historically converted RUB side by side. It uses official
+CBR rates on each entry's cost date, **not** the payday rate or a payroll ledger.
+Money stays in decimal strings; different original currencies are never added
+together. Missing rates or unsupported FX make the subtotal explicitly incomplete.
+
+### MCP App and Security
+
+The report tool advertises `ui://solidtime/labor-costs.html` using the standard
+[MCP Apps extension](https://modelcontextprotocol.io/extensions/apps/overview).
+Supporting desktop hosts render the widget inline: dates, currency, grouping,
+pages and CSV/PDF downloads stay interactive. Hosts without MCP Apps still receive
+the same structured JSON/text. Node **20+** is required; the compatible 1.x Apps SDK
+is pinned rather than migrating the existing MCP server to SDK 2.x.
+
+The HTML/JavaScript bundle is served locally through MCP, with no CDN, analytics,
+direct API connection or token in the iframe. Its CSP declares empty network and
+external-resource origin lists. Data is inserted as text, never executable HTML.
+All API calls stay pinned to the configured HTTPS origin with redirects blocked;
+the server enforces role visibility. Export buffers are capped at 8 MiB and five
+files, expire after ten minutes, and live only in process memory. Restarting the
+MCP server removes them. Downloads are mediated by the host, not public URLs.
+
+### Update an Existing Codex Connection
+
+Rebuild with `npm ci && npm run build`, retain the existing Keychain launcher or
+your configured token injection, then restart **only the Solidtime MCP server**
+from Settings > MCP servers. No token belongs in source or command-line arguments.
+If your Codex configuration uses `enabled_tools`, add the read tool names above;
+otherwise an old allow list hides the new report tools. Keep `SOLIDTIME_READ_ONLY=true`
+for reporting. Reconnection and MCP Apps support depend on the host; a successful
+protocol test alone is not proof that an inline widget rendered.

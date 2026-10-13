@@ -3,3 +3,4 @@ dist/
 .env
 *.tsbuildinfo
 test-all-tools.sh
+tmp/

@@ -10,7 +10,8 @@ export function registerProjectTools(
   server: McpServer,
   api: ApiClient,
   orgId: string,
-  readOnly = true
+  readOnly = true,
+  billingCurrency = "USD"
 ) {
   server.registerTool(
     "solidtime_list_projects",
@@ -39,7 +40,7 @@ export function registerProjectTools(
         return { content: [{ type: "text", text: "No projects found." }] };
       }
 
-      const lines = projects.map((p) => formatProject(p));
+      const lines = projects.map((p) => formatProject(p, billingCurrency));
       lines.unshift(`Found ${projects.length} projects:\n`);
       return { content: [{ type: "text", text: lines.join("\n\n") }] };
     }
@@ -87,7 +88,12 @@ export function registerProjectTools(
 
       const result = await api.post<{ data: Project }>(API_PATHS.projects(orgId), body);
       return {
-        content: [{ type: "text", text: `Project created.\n\n${formatProject(result.data)}` }],
+        content: [
+          {
+            type: "text",
+            text: `Project created.\n\n${formatProject(result.data, billingCurrency)}`,
+          },
+        ],
       };
     }
   );
@@ -142,7 +148,12 @@ export function registerProjectTools(
 
       const result = await api.put<{ data: Project }>(API_PATHS.project(orgId, params.id), body);
       return {
-        content: [{ type: "text", text: `Project updated.\n\n${formatProject(result.data)}` }],
+        content: [
+          {
+            type: "text",
+            text: `Project updated.\n\n${formatProject(result.data, billingCurrency)}`,
+          },
+        ],
       };
     }
   );
@@ -169,7 +180,7 @@ export function registerProjectTools(
   );
 }
 
-function formatProject(p: Project): string {
+function formatProject(p: Project, currency: string): string {
   const parts = [
     `ID: ${p.id}`,
     `Name: ${p.name}`,
@@ -177,7 +188,7 @@ function formatProject(p: Project): string {
     `Billable: ${p.is_billable ? "Yes" : "No"}`,
     `Archived: ${p.is_archived ? "Yes" : "No"}`,
   ];
-  if (p.billable_rate !== null) parts.push(`Rate: ${formatCurrency(p.billable_rate)}/h`);
+  if (p.billable_rate !== null) parts.push(`Rate: ${formatCurrency(p.billable_rate, currency)}/h`);
   if (p.client_id) parts.push(`Client ID: ${p.client_id}`);
   if (p.estimated_time !== null) parts.push(`Estimated: ${formatDuration(p.estimated_time)}`);
   if (p.spent_time > 0) parts.push(`Spent: ${formatDuration(p.spent_time)}`);
