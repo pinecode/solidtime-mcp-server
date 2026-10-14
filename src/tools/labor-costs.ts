@@ -28,14 +28,17 @@ const write = {
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const currency = z.string().regex(/^[A-Z]{3}$/);
 export const costQuery = {
-  date_from: date.optional(),
-  date_to: date.optional(),
+  date_from: date.optional().describe("Inclusive first cost date in the organization timezone."),
+  date_to: date.optional().describe("Inclusive last cost date in the organization timezone."),
   currency: currency
     .optional()
     .describe("Report currency, e.g. RUB; original currencies are always included separately."),
   native: z.enum(["true", "false"]).optional(),
   group: z.enum(GROUP_BY_VALUES).optional(),
-  sub_group: z.enum(GROUP_BY_VALUES).optional(),
+  sub_group: z
+    .enum(GROUP_BY_VALUES)
+    .optional()
+    .describe("Nested breakdown, e.g. group=project and sub_group=task."),
   member_id: z.string().uuid().optional(),
   member_ids: coerceUuidArray.optional(),
   project_ids: coerceUuidArray.optional(),
@@ -96,14 +99,14 @@ export function registerLaborCostTools(
     {
       title: "Employee expense report",
       description:
-        "Show an interactive labor expense report with original and historical converted currencies. Costs are NOT customer billable amounts. Missing rates/FX produce incomplete subtotals. Non-admin users can see only their own costs. Requires the PineCode LaborCosts extension.",
+        "Show an interactive billable work/expense report with original and historical converted currencies. Use member_ids for one employee, group=project and sub_group=task for project/task hours. Only completed billable work counts; this is NOT all tracked hours or customer billable amounts. Missing rates/FX produce incomplete subtotals. Non-admin users can see only their own costs. Requires the PineCode LaborCosts extension.",
       inputSchema: costQuery,
       annotations: read,
       _meta: { ui: { resourceUri: appUri } },
     },
     async (params) => {
       const response = await api.get<{ data: Record<string, unknown> }>(
-        `${root}/labor-costs/entries?${queryString({ ...params, group: params.group ?? "user" })}`
+        `${root}/labor-costs/entries?${queryString({ ...params, group: params.group ?? "user", per_page: params.per_page ?? 20 })}`
       );
       return json({ report: response.data, query: params });
     }

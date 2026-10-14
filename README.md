@@ -273,6 +273,20 @@ CBR rates on each entry's cost date, **not** the payday rate or a payroll ledger
 Money stays in decimal strings; different original currencies are never added
 together. Missing rates or unsupported FX make the subtotal explicitly incomplete.
 
+For a monthly project/task breakdown, call `solidtime_get_labor_cost_report` with
+`date_from: "2026-09-01"`, `date_to: "2026-09-30"`, the employee's `member_ids`,
+`group: "project"`, `sub_group: "task"`, and `currency: "RUB"`.
+Dates are inclusive cost dates in the organization timezone. Each project and
+nested task shows billable hours, original expenses and converted expenses;
+parent and child subtotals must not be added together. Only completed billable
+work is included, not non-billable work, breaks or running timers. Use the standard
+time entry report when all tracked hours are needed.
+
+The inline report keeps the group overview compact on phones. Entry details are
+collapsed initially, paginated by 20, and scrolling tables have a bounded height;
+the MCP Apps SDK reports actual content size to the host instead of reserving a
+full-height canvas. Group/subgroup, date and currency changes preserve the employee filter.
+
 ### MCP App and Security
 
 The report tool advertises `ui://solidtime/labor-costs.html` using the standard

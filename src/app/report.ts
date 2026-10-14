@@ -31,7 +31,9 @@ const text = (id: string, value: string) => {
   element(id).textContent = value;
 };
 const money = (values: Money[]) =>
-  values.map((value) => `${value.amount} ${value.currency}`).join(" + ") || "0";
+  values.map((value) => `${value.amount} ${value.currency}`).join("\n") || "0";
+for (const option of element<HTMLSelectElement>("group").options)
+  element<HTMLSelectElement>("subgroup").add(new Option(option.text, option.value));
 let query: Record<string, unknown> = {};
 let current: Report | undefined;
 let pending = false;
@@ -47,6 +49,7 @@ function render(result: CallToolResult) {
     ["from", "date_from"],
     ["to", "date_to"],
     ["group", "group"],
+    ["subgroup", "sub_group"],
   ]) {
     element<HTMLInputElement | HTMLSelectElement>(id).value = String(
       query[key] ?? (id === "group" ? "user" : "")
@@ -69,12 +72,16 @@ function render(result: CallToolResult) {
       : `Incomplete subtotal: ${report.totals.missing_rate} missing rates, ${report.totals.missing_fx} missing FX quotes.`
   );
   function rows(id: string, values: string[][]) {
+    const headings = [...element(id).closest("table")!.querySelectorAll("th")].map(
+      (heading) => heading.textContent ?? ""
+    );
     element(id).replaceChildren(
       ...values.map((values) => {
         const row = document.createElement("tr");
-        for (const value of values) {
+        for (const [index, value] of values.entries()) {
           const cell = document.createElement("td");
           cell.textContent = value;
+          if (index > 0) cell.dataset.label = headings[index];
           row.append(cell);
         }
         return row;
@@ -88,7 +95,7 @@ function render(result: CallToolResult) {
         group,
         ...(group.groups ?? []).map((child) => ({
           ...child,
-          label: `${group.label} / ${child.label}`,
+          label: `↳ ${child.label}`,
         })),
       ].map((item) => [
         item.label,
@@ -99,6 +106,8 @@ function render(result: CallToolResult) {
       ])
     )
   );
+  for (const row of element("groups").children)
+    if (row.firstChild?.textContent?.startsWith("↳ ")) row.classList.add("subgroup");
   rows(
     "entries",
     report.entries.map((entry) => [
@@ -109,29 +118,25 @@ function render(result: CallToolResult) {
       entry.amount ? money([entry.amount]) : "Incomplete",
     ])
   );
-  const amounts = report.groups.map((group) =>
-    group.totals.known_subtotal.length === 1 ? Number(group.totals.known_subtotal[0].amount) : 0
-  );
+  const amounts = report.groups.map((group) => group.totals.seconds);
   const max = Math.max(...amounts, 1);
   element("bars").replaceChildren(
-    ...(report.currency
-      ? report.groups.map((group, index) => {
-          const row = document.createElement("div");
-          row.className = "bar-row";
-          const label = document.createElement("span");
-          label.textContent = group.label;
-          const track = document.createElement("div");
-          const bar = document.createElement("div");
-          bar.className = "bar";
-          bar.style.width = `${Math.max(0, Math.min(100, (amounts[index] / max) * 100))}%`;
-          track.append(bar);
-          const amount = document.createElement("span");
-          amount.className = "money";
-          amount.textContent = money(group.totals.known_subtotal);
-          row.append(label, track, amount);
-          return row;
-        })
-      : [])
+    ...report.groups.map((group, index) => {
+      const row = document.createElement("div");
+      row.className = "bar-row";
+      const label = document.createElement("span");
+      label.textContent = group.label;
+      const track = document.createElement("div");
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      bar.style.width = `${Math.max(0, Math.min(100, (amounts[index] / max) * 100))}%`;
+      track.append(bar);
+      const amount = document.createElement("span");
+      amount.className = "money";
+      amount.textContent = `${(group.totals.seconds / 3600).toFixed(2)} h`;
+      row.append(label, track, amount);
+      return row;
+    })
   );
   text("page", `Page ${report.pagination.page}`);
   element<HTMLButtonElement>("previous").disabled = report.pagination.page <= 1;
@@ -162,6 +167,7 @@ async function refresh(page = 1) {
     date_from: element<HTMLInputElement>("from").value || undefined,
     date_to: element<HTMLInputElement>("to").value || undefined,
     group: element<HTMLSelectElement>("group").value,
+    sub_group: element<HTMLSelectElement>("subgroup").value || undefined,
     currency: code && code !== "native" ? code : undefined,
     native: code === "native" ? "true" : undefined,
     page,
