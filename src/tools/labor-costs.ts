@@ -99,7 +99,7 @@ export function registerLaborCostTools(
     {
       title: "Employee expense report",
       description:
-        "Show an interactive billable work/expense report with original and historical converted currencies. Use member_ids for one employee, group=project and sub_group=task for project/task hours. Only completed billable work counts; this is NOT all tracked hours or customer billable amounts. Missing rates/FX produce incomplete subtotals. Non-admin users can see only their own costs. Requires the PineCode LaborCosts extension.",
+        "Show an interactive billable work/expense report with original, report and employee payment currencies, plus earned-amount weighted daily FX. Use member_ids for one employee, group=project and sub_group=task for project/task hours. Only completed billable work counts; this is NOT all tracked hours or customer billable amounts. Missing rates/FX produce independently incomplete report/payment subtotals. Non-admin users can see only their own costs. Requires the PineCode LaborCosts extension.",
       inputSchema: costQuery,
       annotations: read,
       _meta: { ui: { resourceUri: appUri } },
@@ -127,10 +127,20 @@ export function registerLaborCostTools(
     {
       title: "Expense settings",
       description:
-        "Organization expense timezone and project display currencies, separate from billing settings.",
+        "Organization expense timezone, project display currencies and scoped employee payment currencies, separate from hourly rates and billing settings.",
       annotations: read,
     },
     async () => json(await api.get(`${root}/labor-costs/settings`))
+  );
+  server.registerTool(
+    "solidtime_get_current_labor_cost_rates",
+    {
+      title: "Current employee expense rates",
+      description:
+        "Personal hourly expense rates effective today in the organization timezone, excluding future/cancelled rates. Owner/Admin see all; other members see only their own. Zero and no assigned rate are distinct. Requires the PineCode extension.",
+      annotations: read,
+    },
+    async () => json(await api.get(`${root}/labor-costs/member-rates/current`))
   );
   server.registerTool(
     "solidtime_get_labor_cost_rates",
@@ -166,7 +176,7 @@ export function registerLaborCostTools(
     {
       title: "Export dual-currency expenses",
       description:
-        "Generate a private CSV or PDF with original and report currencies, returning a session-only resource link valid for ten minutes. No public URL or file is created by MCP.",
+        "Generate a private CSV or PDF with original, report and employee payment currencies and weighted FX, returning a session-only resource link valid for ten minutes. No public URL or file is created by MCP.",
       inputSchema: { ...costQuery, format: z.enum(["csv", "pdf"]) },
       annotations: read,
     },
@@ -253,5 +263,17 @@ export function registerLaborCostTools(
     },
     async ({ id, ...body }) =>
       json(await api.put(`${root}/labor-costs/projects/${id}/currency`, body))
+  );
+  server.registerTool(
+    "solidtime_update_member_payment_currency",
+    {
+      title: "Employee payment currency",
+      description:
+        "Owner/Admin only. Set a separate salary/payment currency, or null for original rate currencies. This current preference changes payment views of all periods, not hourly rate history, timers, billing or actual settlements. Confirm the desired currency with the user first.",
+      inputSchema: { id: z.string().uuid(), payment_currency: currency.nullable() },
+      annotations: { ...write, idempotentHint: true },
+    },
+    async ({ id, ...body }) =>
+      json(await api.put(`${root}/labor-costs/members/${id}/payment-currency`, body))
   );
 }

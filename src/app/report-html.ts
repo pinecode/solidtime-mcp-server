@@ -4,7 +4,9 @@ export const reportHtml = `<!doctype html><html><head><meta charset="utf-8"><met
 :root[data-theme=dark] {color:var(--color-text-primary,#eee);background:var(--color-background-primary,#18181b);color-scheme:dark}
 :root[data-theme=light] {color-scheme:light}
 :root[data-theme=dark] input,:root[data-theme=dark] select,:root[data-theme=dark] button {background:var(--color-background-secondary,#27272a)}
+.summary {grid-template-columns:repeat(4,minmax(0,1fr))} #payment-rate {font-size:11px;white-space:pre-line;margin-top:4px} #groups td:nth-child(5) {white-space:pre-line}
 @media(max-width:480px){body{padding:10px}form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}input,select{width:100%}.actions{align-self:end}.bar-row{grid-template-columns:90px 1fr 64px}h1{font-size:17px}.summary{gap:8px}.summary strong{font-size:15px}.scroll{max-height:260px}thead{display:none}tbody{display:block}tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:6px 0;border-bottom:1px solid #a1a1aa}td{padding:4px;border:0;font-size:12px}td:first-child{grid-column:1/-1;font-weight:600}td:last-child:nth-child(5){grid-column:1/-1;opacity:.7}td[data-label]::before{content:attr(data-label);display:block;font-size:10px;opacity:.7;margin-bottom:2px}.subgroup td:first-child{padding-left:16px}}
+@media(max-width:480px){.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.scroll{max-height:200px}#groups td:nth-child(5),#groups td:last-child{grid-column:1/-1}#groups td:last-child{opacity:.7}#entries tr{grid-template-columns:repeat(2,minmax(0,1fr))}#entries td:nth-child(2){grid-column:1/-1}}
 </style></head><body>
 <h1>Labor costs</h1><form id="filters">
 <label>From<input id="from" type="date"></label><label>Through<input id="to" type="date"></label>
@@ -16,11 +18,11 @@ export const reportHtml = `<!doctype html><html><head><meta charset="utf-8"><met
 <button id="csv" type="button" title="Download CSV">CSV ↓</button><button id="pdf" type="button" title="Download PDF">PDF ↓</button>
 </div>
 </form><p id="status" role="status">Waiting for report…</p>
-<div class="summary"><div><small>Original expense</small><strong id="native">—</strong></div><div><small>Report expense</small><strong id="total">—</strong></div><div><small>Billable hours</small><strong id="hours">—</strong></div></div>
+<div class="summary"><div><small>Original expense</small><strong id="native">—</strong></div><div><small>Report expense</small><strong id="total">—</strong></div><div><small>Payment estimate</small><strong id="payment">—</strong><small id="payment-rate"></small></div><div><small>Billable hours</small><strong id="hours">—</strong></div></div>
 <div id="bars" aria-label="Billable hours by group"></div>
-<div class="scroll"><table><thead><tr><th>Group</th><th>Hours</th><th>Original expense</th><th>Report expense</th><th>Status</th></tr></thead><tbody id="groups"></tbody></table></div>
+<div class="scroll"><table><thead><tr><th>Group</th><th>Hours</th><th>Original expense</th><th>Report expense</th><th>Payment estimate</th><th>Status</th></tr></thead><tbody id="groups"></tbody></table></div>
 <details id="details"><summary>Time entries</summary>
-<div class="scroll"><table><thead><tr><th>Date</th><th>Employee / project</th><th>Hours</th><th>Original expense</th><th>Report expense</th></tr></thead><tbody id="entries"></tbody></table></div>
+<div class="scroll"><table><thead><tr><th>Date</th><th>Employee / project</th><th>Hours</th><th>Original expense</th><th>Report expense</th><th>Payment estimate</th></tr></thead><tbody id="entries"></tbody></table></div>
 <div id="pagination"><button id="previous" type="button">←</button><span id="page"></span><button id="next" type="button">→</button></div>
 </details>
 <script type="module">__SCRIPT__</script></body></html>`;

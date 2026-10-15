@@ -1,6 +1,6 @@
 {
   "name": "solidtime-mcp-server",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "MCP server for SolidTime time tracking — start/stop timers, manage entries, projects, clients, tags, and tasks",
   "author": "Manuel",
   "license": "MIT",

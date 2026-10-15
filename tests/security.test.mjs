@@ -87,7 +87,7 @@ test("MCP advertises only read tools by default and emits no user logs", async (
   await client.connect(clientTransport);
   try {
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 17);
+    assert.equal(tools.length, 18);
     assert.ok(tools.every((tool) => tool.annotations.readOnlyHint === true));
     const blocked = await client.callTool({
       name: "solidtime_delete_project",

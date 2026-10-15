@@ -7,7 +7,7 @@ MCP server for [SolidTime](https://www.solidtime.io/) — the open-source time t
 
 ## Features
 
-- **17 read-only tools by default**, or 36 tools with explicitly enabled writes
+- **18 read-only tools by default**, or 38 tools with explicitly enabled writes
 - **Start/stop timers** with automatic active-timer detection
 - **Aggregated reports** grouped by day, week, project, client, and more
 - **Auto member_id resolution** — no manual configuration needed
@@ -111,7 +111,7 @@ SOLIDTIME_READ_ONLY = "true"
    or Codex, then check `/mcp` and ask for a read-only report. Registration alone
    does not prove that authentication and tool calls work.
 
-The default 17 tools cannot change data. Setting `SOLIDTIME_READ_ONLY=false`
+The default 18 tools cannot change data. Setting `SOLIDTIME_READ_ONLY=false`
 enables writes in the server; Codex's allowlist must also be changed to expose
 them. Only do that intentionally with an appropriately permissioned token.
 
@@ -243,7 +243,7 @@ npm run inspector    # Test with MCP Inspector
 ## License
 
 MIT
-# Employee Expenses and Inline Reports (1.1.0)
+# Employee Expenses and Inline Reports (1.2.0)
 
 The PineCode Solidtime **0.21.1** extension adds historical employee expenses.
 It is separate from upstream customer billing: the original API `cost` field still
@@ -255,7 +255,8 @@ expense tools require the extension and return a normal API error on older serve
 - `solidtime_get_labor_cost_entries`: entry details, effective rates, both currencies,
   completeness and missing-data flags.
 - `solidtime_get_labor_cost_rates`: effective-dated employee/project history, including cancellations.
-- `solidtime_get_labor_cost_settings`: organization expense timezone and project currencies.
+- `solidtime_get_labor_cost_settings`: organization expense timezone, project currencies and scoped employee payment currencies.
+- `solidtime_get_current_labor_cost_rates`: today's personal rates in the organization timezone, scoped to the caller.
 - `solidtime_export_labor_costs`: dual-currency CSV/PDF as a private MCP resource link.
 - `solidtime_list_members`, `solidtime_get_organization`, `solidtime_get_project`,
   `solidtime_get_currencies`: discover IDs and currencies without guessing.
@@ -263,7 +264,10 @@ expense tools require the extension and return a normal API error on older serve
 With `SOLIDTIME_READ_ONLY=false`, Owner/Admin may also use
 `solidtime_create_labor_cost_rate`, `solidtime_update_labor_cost_rate`,
 `solidtime_cancel_labor_cost_rate`, `solidtime_update_expense_timezone` and
-`solidtime_update_project_expense_currency`. Rate changes/cancellations can affect
+`solidtime_update_project_expense_currency` and `solidtime_update_member_payment_currency`.
+The latter accepts `{id: "member-uuid", payment_currency: "RUB"}` (or `null` to
+preserve original rate currencies). It changes a current reporting preference for
+all periods, not hourly rates or actual settlements. Rate changes/cancellations can affect
 history: confirm the effective interval with the user before invoking them. The UI
 widget is read-only and does not expose these mutation controls.
 
@@ -272,6 +276,17 @@ shows original USD and historically converted RUB side by side. It uses official
 CBR rates on each entry's cost date, **not** the payday rate or a payroll ledger.
 Money stays in decimal strings; different original currencies are never added
 together. Missing rates or unsupported FX make the subtotal explicitly incomplete.
+
+Payment currency is independent of both rate and display currency: an employee
+can earn USD, receive RUB, and still appear in a USD project report. The widget,
+structured JSON and CSV/PDF include a separate payment estimate and weighted FX
+from the API. Each earning uses its historical daily CBR rate. For example, 6 USD
+at 80 RUB/USD and 12 USD at 90 yields 18 USD, 1,560 RUB and 86.66666667 RUB/USD.
+The weighting uses unrounded earnings, not calendar days or hours; different
+currency pairs stay separate. Missing payment quotes have their own completeness
+flag and no invented average. Zero earnings have no weighted rate. On older
+extensions without payment fields, the widget shows payment data as unavailable
+instead of guessing the employee's payment currency.
 
 For a monthly project/task breakdown, call `solidtime_get_labor_cost_report` with
 `date_from: "2026-09-01"`, `date_to: "2026-09-30"`, the employee's `member_ids`,

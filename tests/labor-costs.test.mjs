@@ -55,6 +55,50 @@ test("expense reports keep exact currency strings, real filters, and MCP App met
   const bundle = await readFile(new URL("../dist/app/report-ui.js", import.meta.url), "utf8");
   assert.ok(resource.contents[0].text.includes(bundle.replace(/<\/script/gi, "<\\/script")));
 });
+
+test("payment reports retain exact API money and weighted FX without changing report currency", async t => {
+  const payment = {
+    known_subtotal: [{amount:"1560.00",currency:"RUB"}],complete:true,missing_rate:0,missing_fx:0,
+    exchange_rates:[{source_currency:"USD",payment_currency:"RUB",weighted_rate:"86.66666667",complete:true,missing_fx:0}],
+  };
+  const client = await setup(t, async () => Response.json({data:{
+    currency:"USD",totals:{native:[{amount:"18.00",currency:"USD"}],known_subtotal:[{amount:"18.00",currency:"USD"}],payment,complete:true},
+  }}));
+  const result = await client.callTool({name:"solidtime_get_labor_cost_report",arguments:{currency:"USD",member_ids:[member]}});
+  assert.equal(result.structuredContent.report.currency,"USD");
+  assert.deepEqual(result.structuredContent.report.totals.payment,payment);
+  const resource = await client.readResource({uri:"ui://solidtime/labor-costs.html"});
+  assert.ok(resource.contents[0].text.includes('id="payment"'));
+  assert.ok(resource.contents[0].text.includes('id="payment-rate"'));
+  assert.ok(resource.contents[0].text.includes("Payment estimate"));
+});
+
+test("current personal rates use the scoped extension endpoint", async t => {
+  const client = await setup(t, async url => {
+    assert.equal(url.pathname,`/api/v1/organizations/${org}/labor-costs/member-rates/current`);
+    return Response.json({data:{date:"2026-10-15",rates:[{member_id:member,amount:"0",currency:"JPY",effective_from:"2026-08-01"}]}});
+  });
+  const result = await client.callTool({name:"solidtime_get_current_labor_cost_rates",arguments:{}});
+  assert.equal(result.structuredContent.data.rates[0].amount,"0");
+});
+
+test("payment currency writes are hidden by default and validate both UUID and nullable currency", async t => {
+  const calls = [];
+  const readClient = await setup(t, async () => {throw new Error("Unexpected API call");});
+  const {tools} = await readClient.listTools();
+  assert.ok(!tools.some(tool => tool.name === "solidtime_update_member_payment_currency"));
+  const client = await setup(t, async (url,options) => {calls.push({url,options});return Response.json({data:{}});},false);
+  const write = currency => client.callTool({name:"solidtime_update_member_payment_currency",arguments:{id:member,payment_currency:currency}});
+  assert.ok(!(await write("RUB")).isError);
+  assert.equal(calls[0].url.pathname,`/api/v1/organizations/${org}/labor-costs/members/${member}/payment-currency`);
+  assert.equal(calls[0].options.method,"PUT");
+  assert.deepEqual(JSON.parse(calls[0].options.body),{payment_currency:"RUB"});
+  assert.ok(!(await write(null)).isError);
+  assert.deepEqual(JSON.parse(calls[1].options.body),{payment_currency:null});
+  assert.equal((await write("rub")).isError,true);
+  assert.equal((await client.callTool({name:"solidtime_update_member_payment_currency",arguments:{id:"../outside",payment_currency:"RUB"}})).isError,true);
+  assert.equal(calls.length,2);
+});
 test("expense exports are session-only resources and no filesystem/public URL is returned", async t => {
   const client = await setup(t, async () => new Response("%PDF-test",{headers:{"content-type":"application/pdf"}}));
   const result = await client.callTool({name:"solidtime_export_labor_costs",arguments:{format:"pdf",currency:"RUB"}});

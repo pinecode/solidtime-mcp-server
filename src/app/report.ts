@@ -2,6 +2,17 @@ import { App, applyHostStyleVariables } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 type Money = { amount: string; currency: string };
+type PaymentTotals = {
+  known_subtotal: Money[];
+  complete: boolean;
+  missing_rate: number;
+  missing_fx: number;
+  exchange_rates: {
+    source_currency: string;
+    payment_currency: string;
+    weighted_rate: string | null;
+  }[];
+};
 type Totals = {
   native: Money[];
   known_subtotal: Money[];
@@ -9,6 +20,7 @@ type Totals = {
   seconds: number;
   missing_rate: number;
   missing_fx: number;
+  payment?: PaymentTotals;
 };
 type Report = {
   currency: string | null;
@@ -22,16 +34,32 @@ type Report = {
     seconds: number;
     native: Money | null;
     amount: Money | null;
+    payment?: Money | null;
   }[];
   pagination: { page: number; per_page: number; total: number };
 };
-const app = new App({ name: "Solidtime expense report", version: "1.1.0" }, {});
+const app = new App({ name: "Solidtime expense report", version: "1.2.0" }, {});
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id)! as T;
 const text = (id: string, value: string) => {
   element(id).textContent = value;
 };
 const money = (values: Money[]) =>
   values.map((value) => `${value.amount} ${value.currency}`).join("\n") || "0";
+const paymentMoney = (payment?: PaymentTotals) =>
+  payment
+    ? payment.known_subtotal.length
+      ? money(payment.known_subtotal)
+      : payment.complete
+        ? "0"
+        : "Unknown"
+    : "Unavailable";
+const paymentRates = (payment?: PaymentTotals) =>
+  (payment?.exchange_rates ?? [])
+    .map(
+      (pair) =>
+        `Weighted FX: ${pair.weighted_rate?.replace(/\.?0+$/, "") ?? "Unavailable"} ${pair.payment_currency} / ${pair.source_currency}`
+    )
+    .join("\n");
 for (const option of element<HTMLSelectElement>("group").options)
   element<HTMLSelectElement>("subgroup").add(new Option(option.text, option.value));
 let query: Record<string, unknown> = {};
@@ -62,14 +90,23 @@ function render(result: CallToolResult) {
   select.value = selectedCurrency;
   text("native", money(report.totals.native));
   text("total", money(report.totals.known_subtotal));
+  text("payment", paymentMoney(report.totals.payment));
+  text("payment-rate", paymentRates(report.totals.payment));
   text("hours", (report.totals.seconds / 3600).toFixed(2));
   text(
     "status",
-    report.totals.complete
-      ? report.groups_additive
-        ? ""
-        : "Tag groups overlap; the total counts each entry once."
-      : `Incomplete subtotal: ${report.totals.missing_rate} missing rates, ${report.totals.missing_fx} missing FX quotes.`
+    [
+      report.totals.complete
+        ? report.groups_additive
+          ? ""
+          : "Tag groups overlap; the total counts each entry once."
+        : `Incomplete subtotal: ${report.totals.missing_rate} missing rates, ${report.totals.missing_fx} missing FX quotes.`,
+      report.totals.payment && !report.totals.payment.complete
+        ? `Payment incomplete: ${report.totals.payment.missing_rate} missing rates, ${report.totals.payment.missing_fx} missing FX quotes.`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
   );
   function rows(id: string, values: string[][]) {
     const headings = [...element(id).closest("table")!.querySelectorAll("th")].map(
@@ -102,7 +139,10 @@ function render(result: CallToolResult) {
         (item.totals.seconds / 3600).toFixed(2),
         money(item.totals.native),
         money(item.totals.known_subtotal),
-        item.totals.complete ? "Complete" : "Incomplete",
+        [paymentMoney(item.totals.payment), paymentRates(item.totals.payment)]
+          .filter(Boolean)
+          .join("\n"),
+        item.totals.complete && item.totals.payment?.complete !== false ? "Complete" : "Incomplete",
       ])
     )
   );
@@ -116,6 +156,11 @@ function render(result: CallToolResult) {
       (entry.seconds / 3600).toFixed(2),
       entry.native ? money([entry.native]) : "Missing rate",
       entry.amount ? money([entry.amount]) : "Incomplete",
+      entry.payment
+        ? money([entry.payment])
+        : entry.payment === null
+          ? "Incomplete"
+          : "Unavailable",
     ])
   );
   const amounts = report.groups.map((group) => group.totals.seconds);
@@ -162,7 +207,7 @@ async function run(action: () => Promise<void>) {
 }
 async function refresh(page = 1) {
   const code = element<HTMLSelectElement>("currency").value;
-  query = {
+  const filters = {
     ...query,
     date_from: element<HTMLInputElement>("from").value || undefined,
     date_to: element<HTMLInputElement>("to").value || undefined,
@@ -172,6 +217,8 @@ async function refresh(page = 1) {
     native: code === "native" ? "true" : undefined,
     page,
   };
+  // Host transports may encode undefined as null; omit unset optional filters.
+  query = Object.fromEntries(Object.entries(filters).filter(([, value]) => value != null));
   render(await app.callServerTool({ name: "solidtime_get_labor_cost_report", arguments: query }));
 }
 element("refresh").addEventListener("click", () => void run(() => refresh()));
