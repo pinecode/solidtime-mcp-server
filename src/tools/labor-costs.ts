@@ -154,13 +154,43 @@ export function registerLaborCostTools(
     async ({ subject, id }) => json(await api.get(`${root}/${subject}/${id}/labor-cost-rates`))
   );
 
-  const exports = new Map<string, { data: Buffer; mimeType: string; expires: number }>();
+  const exports = new Map<
+    string,
+    { data: Buffer; mimeType: string; expires: number; name: string }
+  >();
   function expire() {
     for (const [id, value] of exports) if (value.expires < Date.now()) exports.delete(id);
   }
+  function exportResource(file: { data: Buffer; mimeType: string }, name: string) {
+    expire();
+    while (exports.size >= 5) exports.delete(exports.keys().next().value!);
+    const id = randomUUID();
+    exports.set(id, { ...file, expires: Date.now() + 600000, name });
+    return {
+      content: [
+        {
+          type: "resource_link" as const,
+          uri: `solidtime://exports/${id}`,
+          name,
+          mimeType: file.mimeType,
+        },
+      ],
+    };
+  }
   server.registerResource(
     "expense-export",
-    new ResourceTemplate("solidtime://exports/{id}", { list: undefined }),
+    new ResourceTemplate("solidtime://exports/{id}", {
+      list: async () => {
+        expire();
+        return {
+          resources: [...exports].map(([id, file]) => ({
+            uri: `solidtime://exports/${id}`,
+            name: file.name,
+            mimeType: file.mimeType,
+          })),
+        };
+      },
+    }),
     {},
     async (uri, { id }) => {
       expire();
@@ -182,20 +212,48 @@ export function registerLaborCostTools(
     },
     async (params) => {
       const file = await api.getExport(`${root}/labor-costs/export?${queryString(params)}`);
-      expire();
-      while (exports.size >= 5) exports.delete(exports.keys().next().value!);
-      const id = randomUUID();
-      exports.set(id, { ...file, expires: Date.now() + 600000 });
-      return {
-        content: [
-          {
-            type: "resource_link" as const,
-            uri: `solidtime://exports/${id}`,
-            name: `labor-costs.${params.format}`,
-            mimeType: file.mimeType,
-          },
-        ],
-      };
+      return exportResource(file, `labor-costs.${params.format}`);
+    }
+  );
+  server.registerTool(
+    "solidtime_export_employee_report",
+    {
+      title: "Detailed employee PDF",
+      description:
+        "Download one employee's private detailed time-and-pay PDF for an inclusive date range. Reuses Overview's time charts and Project > Description breakdown; the header adds original earnings, payment-currency estimate and earned-amount weighted historical FX. Time includes all matching completed work, but only billable work earns money. No customer billing, rounding or settlement ledger. Owner/Admin may select anyone; others only themselves. Requires the PineCode employee-report endpoint. Returns a session-only PDF resource, valid ten minutes; use resources/read to obtain its bytes for an authorized document workflow, never a public URL.",
+      inputSchema: {
+        member_id: z
+          .string()
+          .uuid()
+          .describe(
+            "Organization membership ID, not a user ID; use solidtime_list_members to find it."
+          ),
+        date_from: date.describe("Inclusive first persisted cost date, YYYY-MM-DD."),
+        date_to: date.describe("Inclusive last persisted cost date, YYYY-MM-DD."),
+        project_ids: costQuery.project_ids,
+        client_ids: costQuery.client_ids,
+        task_ids: costQuery.task_ids,
+        tag_ids: costQuery.tag_ids,
+        tag_match_type: costQuery.tag_match_type,
+        billable: z
+          .enum(["true", "false"])
+          .optional()
+          .describe(
+            "Omit to include all completed work in the time breakdown; earnings still include billable work only."
+          ),
+      },
+      annotations: read,
+    },
+    async (params) => {
+      const file = await api.getExport(
+        `${root}/labor-costs/employee-report?${queryString(params)}`
+      );
+      if (
+        file.mimeType !== "application/pdf" ||
+        !file.data.subarray(0, 5).equals(Buffer.from("%PDF-"))
+      )
+        throw new Error("SolidTime returned an invalid employee PDF.");
+      return exportResource(file, `employee-report-${params.date_from}-${params.date_to}.pdf`);
     }
   );
   if (readOnly) return;

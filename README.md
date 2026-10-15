@@ -258,6 +258,8 @@ expense tools require the extension and return a normal API error on older serve
 - `solidtime_get_labor_cost_settings`: organization expense timezone, project currencies and scoped employee payment currencies.
 - `solidtime_get_current_labor_cost_rates`: today's personal rates in the organization timezone, scoped to the caller.
 - `solidtime_export_labor_costs`: dual-currency CSV/PDF as a private MCP resource link.
+- `solidtime_export_employee_report`: detailed employee PDF with Overview time charts,
+  Project > Description breakdown, original earnings and payment estimate in the header.
 - `solidtime_list_members`, `solidtime_get_organization`, `solidtime_get_project`,
   `solidtime_get_currencies`: discover IDs and currencies without guessing.
 
@@ -296,6 +298,39 @@ nested task shows billable hours, original expenses and converted expenses;
 parent and child subtotals must not be added together. Only completed billable
 work is included, not non-billable work, breaks or running timers. Use the standard
 time entry report when all tracked hours are needed.
+
+For the detailed employee time-and-pay PDF, first resolve the **membership** UUID
+with `solidtime_list_members`, then call:
+
+```json
+{
+  "name": "solidtime_export_employee_report",
+  "arguments": {
+    "member_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "date_from": "2026-09-01",
+    "date_to": "2026-09-30"
+  }
+}
+```
+
+The PDF includes the standard Overview time chart, project pie chart and
+Project > Description table, with original earnings and the employee's configured
+payment-currency estimate at the top. Dates are inclusive persisted cost dates.
+Optional project/client/task/tag filters and `billable` apply to both sections.
+Time includes all matching completed work; earnings still include only billable
+work. Breaks/running timers and billing rounding are excluded. Multiple rate
+currencies and incomplete rate/FX subtotals remain explicit. Owner/Admin may
+select any employee; other members may select only themselves, enforced by the API.
+
+The result is a `resource_link` (`solidtime://exports/<random-id>`), not a public
+download URL. Read it with MCP `resources/read` before its ten-minute expiry to
+obtain the `application/pdf` base64 bytes, or discover active files through
+`resources/list`. A host can save those bytes locally or
+attach them to an explicitly authorized document/Telegram workflow. This server
+does not send reports to Telegram or any third-party service. The same PDF is
+available in Solidtime's Overview **Export > Employee PDF** menu after selecting
+one member. The deployed Solidtime extension must include `/labor-costs/employee-report`;
+older deployments return 404, not a substitute billing PDF.
 
 The inline report keeps the group overview compact on phones. Entry details are
 collapsed initially, paginated by 20, and scrolling tables have a bounded height;

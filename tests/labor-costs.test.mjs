@@ -109,6 +109,71 @@ test("expense exports are session-only resources and no filesystem/public URL is
   assert.equal(Buffer.from(read.contents[0].blob,"base64").toString(),"%PDF-test");
   await assert.rejects(client.readResource({uri:"solidtime://exports/not-a-file"}));
 });
+test("detailed employee PDF forwards dates and scoped filters as a private downloadable resource", async t => {
+  const client = await setup(t, async (url,options) => {
+    assert.equal(url.origin,origin);
+    assert.equal(url.pathname,`/api/v1/organizations/${org}/labor-costs/employee-report`);
+    assert.equal(options.method,"GET");
+    assert.equal(options.headers.Authorization,"Bearer FAKE-TEST-TOKEN");
+    assert.equal(options.redirect,"error");
+    assert.equal(url.searchParams.get("member_id"),member);
+    assert.equal(url.searchParams.get("date_from"),"2026-09-01");
+    assert.equal(url.searchParams.get("date_to"),"2026-09-30");
+    assert.equal(url.searchParams.get("project_ids[]"),member);
+    assert.equal(url.searchParams.get("tag_match_type"),"not_contains");
+    assert.equal(url.searchParams.get("billable"),"true");
+    return new Response("%PDF-employee",{headers:{"content-type":"application/pdf"}});
+  });
+  const {tools} = await client.listTools();
+  const tool = tools.find(tool=>tool.name === "solidtime_export_employee_report");
+  assert.deepEqual(tool.inputSchema.required,["member_id","date_from","date_to"]);
+  assert.equal(tool.annotations.readOnlyHint,true);
+  const result = await client.callTool({name:tool.name,arguments:{member_id:member,date_from:"2026-09-01",date_to:"2026-09-30",project_ids:[member],tag_match_type:"not_contains",billable:"true"}});
+  assert.ok(!result.isError);
+  assert.equal(result.content[0].name,"employee-report-2026-09-01-2026-09-30.pdf");
+  assert.equal(result.content[0].mimeType,"application/pdf");
+  assert.ok(!JSON.stringify(result).includes("FAKE-TEST-TOKEN"));
+  const listed = await client.listResources();
+  assert.ok(listed.resources.some(file=>file.uri === result.content[0].uri && file.mimeType === "application/pdf"));
+  const resource = await client.readResource({uri:result.content[0].uri});
+  assert.equal(Buffer.from(resource.contents[0].blob,"base64").toString(),"%PDF-employee");
+});
+test("detailed PDFs validate employee/dates before calling the API and preserve access errors", async t => {
+  let calls=0;
+  const client = await setup(t, async () => { calls++;return new Response("private server details",{status:403}); });
+  const base = {member_id:member,date_from:"2026-09-01",date_to:"2026-09-30"};
+  for (const args of [{...base,member_id:"../outside"},{...base,date_from:undefined},{...base,date_to:"September"}]) {
+    assert.equal((await client.callTool({name:"solidtime_export_employee_report",arguments:args})).isError,true);
+  }
+  assert.equal(calls,0);
+  const denied = await client.callTool({name:"solidtime_export_employee_report",arguments:base});
+  assert.equal(denied.isError,true);
+  assert.match(denied.content[0].text,/Permission denied/);
+  assert.ok(!JSON.stringify(denied).includes("private server details"));
+  assert.equal(calls,1);
+});
+test("detailed PDF refuses CSV and malformed PDF responses", async t => {
+  let mime="text/csv";
+  const client = await setup(t, async () => new Response("not a PDF",{headers:{"content-type":mime}}));
+  const call=()=>client.callTool({name:"solidtime_export_employee_report",arguments:{member_id:member,date_from:"2026-09-01",date_to:"2026-09-30"}});
+  assert.equal((await call()).isError,true);
+  mime="application/pdf";
+  assert.equal((await call()).isError,true);
+});
+test("detailed PDF resources expire, evict old buffers and stay isolated between MCP sessions", async t => {
+  let now=Date.now();
+  t.mock.method(Date,"now",()=>now);
+  const client = await setup(t, async () => new Response("%PDF-test",{headers:{"content-type":"application/pdf"}}));
+  const call=()=>client.callTool({name:"solidtime_export_employee_report",arguments:{member_id:member,date_from:"2026-09-01",date_to:"2026-09-30"}});
+  const first=(await call()).content[0].uri;
+  for(let i=0;i<5;i++) await call();
+  await assert.rejects(client.readResource({uri:first}));
+  const last=(await call()).content[0].uri;
+  const other=await setup(t,async()=>{throw new Error("Unexpected request");});
+  await assert.rejects(other.readResource({uri:last}));
+  now+=600001;
+  await assert.rejects(client.readResource({uri:last}));
+});
 test("expense writes are hidden in read-only mode and explicit writes preserve zero/string amounts", async t => {
   const calls=[];
   const client = await setup(t, async (url, options) => {calls.push({url,options});return Response.json({data:[]});}, false);

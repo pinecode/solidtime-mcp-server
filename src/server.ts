@@ -43,7 +43,7 @@ export async function createServer(config: ServerConfig) {
 
   const server = new McpServer({
     name: "solidtime",
-    version: "1.2.0",
+    version: "1.3.0",
   });
 
   registerUserTools(server, api, getMemberId);
