@@ -11,7 +11,8 @@ export function registerTimeEntryTools(
   api: ApiClient,
   orgId: string,
   getMemberId: () => string,
-  readOnly = true
+  readOnly = true,
+  billingCurrency = "USD"
 ) {
   async function getActiveTimer(): Promise<TimeEntry | null> {
     const response = await api.getOrNull<{ data: TimeEntry }>(API_PATHS.activeTimer);
@@ -166,12 +167,10 @@ export function registerTimeEntryTools(
       if (params.end) query.set("end", params.end);
       if (params.active) query.set("active", params.active);
       if (params.billable) query.set("billable", params.billable);
-      if (params.project_ids)
-        params.project_ids.forEach((id) => query.append("filter[project_ids][]", id));
-      if (params.client_ids)
-        params.client_ids.forEach((id) => query.append("filter[client_ids][]", id));
-      if (params.task_ids) params.task_ids.forEach((id) => query.append("filter[task_ids][]", id));
-      if (params.tag_ids) params.tag_ids.forEach((id) => query.append("filter[tag_ids][]", id));
+      if (params.project_ids) params.project_ids.forEach((id) => query.append("project_ids[]", id));
+      if (params.client_ids) params.client_ids.forEach((id) => query.append("client_ids[]", id));
+      if (params.task_ids) params.task_ids.forEach((id) => query.append("task_ids[]", id));
+      if (params.tag_ids) params.tag_ids.forEach((id) => query.append("tag_ids[]", id));
 
       const limit = params.limit ?? PAGINATION.defaultLimit;
       const offset = params.offset ?? 0;
@@ -353,13 +352,10 @@ export function registerTimeEntryTools(
       if (params.start) query.set("start", params.start);
       if (params.end) query.set("end", params.end);
       if (params.billable) query.set("billable", params.billable);
-      if (params.project_ids)
-        params.project_ids.forEach((id) => query.append("filter[project_ids][]", id));
-      if (params.client_ids)
-        params.client_ids.forEach((id) => query.append("filter[client_ids][]", id));
-      if (params.tag_ids) params.tag_ids.forEach((id) => query.append("filter[tag_ids][]", id));
-      if (params.member_ids)
-        params.member_ids.forEach((id) => query.append("filter[member_ids][]", id));
+      if (params.project_ids) params.project_ids.forEach((id) => query.append("project_ids[]", id));
+      if (params.client_ids) params.client_ids.forEach((id) => query.append("client_ids[]", id));
+      if (params.tag_ids) params.tag_ids.forEach((id) => query.append("tag_ids[]", id));
+      if (params.member_ids) params.member_ids.forEach((id) => query.append("member_ids[]", id));
 
       const path = `${API_PATHS.timeEntryReport(orgId)}?${query.toString()}`;
       const response = await api.get<{ data: TimeEntryReport }>(path);
@@ -372,13 +368,13 @@ export function registerTimeEntryTools(
       const lines = [`Report grouped by: ${result.grouped_type}\n`];
       for (const group of result.grouped_data) {
         const duration = formatDuration(group.seconds);
-        const cost = group.cost > 0 ? ` (${formatCurrency(group.cost)})` : "";
+        const cost = group.cost > 0 ? ` (${formatCurrency(group.cost, billingCurrency)})` : "";
         lines.push(`${group.key}: ${duration}${cost}`);
 
         if (group.grouped_data) {
           for (const sub of group.grouped_data) {
             const subDuration = formatDuration(sub.seconds);
-            const subCost = sub.cost > 0 ? ` (${formatCurrency(sub.cost)})` : "";
+            const subCost = sub.cost > 0 ? ` (${formatCurrency(sub.cost, billingCurrency)})` : "";
             lines.push(`  ${sub.key}: ${subDuration}${subCost}`);
           }
         }

@@ -74,8 +74,8 @@ test("MCP advertises only read tools by default and emits no user logs", async (
   const calls = [];
   t.mock.method(globalThis, "fetch", async (url) => {
     calls.push(String(url));
-    const data = String(url).includes("/members")
-      ? [{ id: "member", user_id: "user" }]
+    const data = String(url).includes("/memberships")
+      ? [{ id: "member", organization: {id: org, currency: "USD"} }]
       : { id: "user", name: "Private Name", email: "private@example.com" };
     return Response.json({ data });
   });
@@ -87,7 +87,7 @@ test("MCP advertises only read tools by default and emits no user logs", async (
   await client.connect(clientTransport);
   try {
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 8);
+    assert.equal(tools.length, 19);
     assert.ok(tools.every((tool) => tool.annotations.readOnlyHint === true));
     const blocked = await client.callTool({
       name: "solidtime_delete_project",

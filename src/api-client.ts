@@ -56,7 +56,12 @@ export class ApiClient {
     this.token = token;
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    binary = false
+  ): Promise<T> {
     if (this.readOnly && method !== "GET") throw new Error("Write operations are disabled.");
     const url = new URL(
       path.startsWith("/api/v1/") ? `${this.baseUrl}${path}` : `${this.baseUrl}/api/v1${path}`
@@ -81,7 +86,7 @@ export class ApiClient {
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
         redirect: "error",
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(binary ? 90000 : 30000),
       });
     } catch {
       throw new Error(
@@ -96,6 +101,28 @@ export class ApiClient {
     if (!response.ok) {
       throw new SolidTimeApiError(response.status);
     }
+    if (binary) {
+      const mimeType = response.headers.get("content-type")?.split(";")[0];
+      if (mimeType !== "application/pdf" && mimeType !== "text/csv") {
+        throw new Error("SolidTime returned an unexpected export format.");
+      }
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("SolidTime returned an empty export.");
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > 8 * 1024 * 1024) throw new Error("SolidTime export exceeds the 8 MiB limit.");
+          chunks.push(value);
+        }
+      } finally {
+        await reader.cancel();
+      }
+      return { data: Buffer.concat(chunks), mimeType } as T;
+    }
     try {
       return (await response.json()) as T;
     } catch {
@@ -105,6 +132,10 @@ export class ApiClient {
 
   get<T>(path: string): Promise<T> {
     return this.request<T>("GET", path);
+  }
+
+  getExport(path: string): Promise<{ data: Buffer; mimeType: string }> {
+    return this.request("GET", path, undefined, true);
   }
 
   async getOrNull<T>(path: string): Promise<T | null> {

@@ -7,7 +7,7 @@ MCP server for [SolidTime](https://www.solidtime.io/) — the open-source time t
 
 ## Features
 
-- **8 read-only tools by default**, or 22 tools with explicitly enabled writes
+- **18 read-only tools by default**, or 38 tools with explicitly enabled writes
 - **Start/stop timers** with automatic active-timer detection
 - **Aggregated reports** grouped by day, week, project, client, and more
 - **Auto member_id resolution** — no manual configuration needed
@@ -58,7 +58,7 @@ Get your API token from **SolidTime > Settings > API**.
 ## Codex Configuration
 
 Codex starts this server as a local stdio process. It does not need a public
-MCP URL or an open listening port. Use Node.js 18 or newer.
+MCP URL or an open listening port. Use Node.js 20 or newer.
 
 1. Build the checkout as above.
 2. Activate personal API tokens on self-hosted Solidtime if necessary:
@@ -111,7 +111,7 @@ SOLIDTIME_READ_ONLY = "true"
    or Codex, then check `/mcp` and ask for a read-only report. Registration alone
    does not prove that authentication and tool calls work.
 
-The default 8 tools cannot change data. Setting `SOLIDTIME_READ_ONLY=false`
+The default 18 tools cannot change data. Setting `SOLIDTIME_READ_ONLY=false`
 enables writes in the server; Codex's allowlist must also be changed to expose
 them. Only do that intentionally with an appropriately permissioned token.
 
@@ -243,3 +243,123 @@ npm run inspector    # Test with MCP Inspector
 ## License
 
 MIT
+# Employee Expenses and Inline Reports (1.2.0)
+
+The PineCode Solidtime **0.21.1** extension adds historical employee expenses.
+It is separate from upstream customer billing: the original API `cost` field still
+means billable revenue. Standard tools continue to work on upstream Solidtime;
+expense tools require the extension and return a normal API error on older servers.
+
+- `solidtime_get_labor_cost_report`: interactive MCP App plus structured JSON, with dates,
+  employee/project/client/task/tag filters, grouping, display currency and pagination.
+- `solidtime_get_labor_cost_entries`: entry details, effective rates, both currencies,
+  completeness and missing-data flags.
+- `solidtime_get_labor_cost_rates`: effective-dated employee/project history, including cancellations.
+- `solidtime_get_labor_cost_settings`: organization expense timezone, project currencies and scoped employee payment currencies.
+- `solidtime_get_current_labor_cost_rates`: today's personal rates in the organization timezone, scoped to the caller.
+- `solidtime_export_labor_costs`: dual-currency CSV/PDF as a private MCP resource link.
+- `solidtime_export_employee_report`: detailed employee PDF with Overview time charts,
+  Project > Description breakdown, original earnings and payment estimate in the header.
+- `solidtime_list_members`, `solidtime_get_organization`, `solidtime_get_project`,
+  `solidtime_get_currencies`: discover IDs and currencies without guessing.
+
+With `SOLIDTIME_READ_ONLY=false`, Owner/Admin may also use
+`solidtime_create_labor_cost_rate`, `solidtime_update_labor_cost_rate`,
+`solidtime_cancel_labor_cost_rate`, `solidtime_update_expense_timezone` and
+`solidtime_update_project_expense_currency` and `solidtime_update_member_payment_currency`.
+The latter accepts `{id: "member-uuid", payment_currency: "RUB"}` (or `null` to
+preserve original rate currencies). It changes a current reporting preference for
+all periods, not hourly rates or actual settlements. Rate changes/cancellations can affect
+history: confirm the effective interval with the user before invoking them. The UI
+widget is read-only and does not expose these mutation controls.
+
+Example: ask for one employee's monthly report with `currency: "RUB"`. The report
+shows original USD and historically converted RUB side by side. It uses official
+CBR rates on each entry's cost date, **not** the payday rate or a payroll ledger.
+Money stays in decimal strings; different original currencies are never added
+together. Missing rates or unsupported FX make the subtotal explicitly incomplete.
+
+Payment currency is independent of both rate and display currency: an employee
+can earn USD, receive RUB, and still appear in a USD project report. The widget,
+structured JSON and CSV/PDF include a separate payment estimate and weighted FX
+from the API. Each earning uses its historical daily CBR rate. For example, 6 USD
+at 80 RUB/USD and 12 USD at 90 yields 18 USD, 1,560 RUB and 86.66666667 RUB/USD.
+The weighting uses unrounded earnings, not calendar days or hours; different
+currency pairs stay separate. Missing payment quotes have their own completeness
+flag and no invented average. Zero earnings have no weighted rate. On older
+extensions without payment fields, the widget shows payment data as unavailable
+instead of guessing the employee's payment currency.
+
+For a monthly project/task breakdown, call `solidtime_get_labor_cost_report` with
+`date_from: "2026-09-01"`, `date_to: "2026-09-30"`, the employee's `member_ids`,
+`group: "project"`, `sub_group: "task"`, and `currency: "RUB"`.
+Dates are inclusive cost dates in the organization timezone. Each project and
+nested task shows billable hours, original expenses and converted expenses;
+parent and child subtotals must not be added together. Only completed billable
+work is included, not non-billable work, breaks or running timers. Use the standard
+time entry report when all tracked hours are needed.
+
+For the detailed employee time-and-pay PDF, first resolve the **membership** UUID
+with `solidtime_list_members`, then call:
+
+```json
+{
+  "name": "solidtime_export_employee_report",
+  "arguments": {
+    "member_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "date_from": "2026-09-01",
+    "date_to": "2026-09-30"
+  }
+}
+```
+
+The PDF includes the standard Overview time chart, project pie chart and
+Project > Description table, with original earnings and the employee's configured
+payment-currency estimate at the top. Dates are inclusive persisted cost dates.
+Optional project/client/task/tag filters and `billable` apply to both sections.
+Time includes all matching completed work; earnings still include only billable
+work. Breaks/running timers and billing rounding are excluded. Multiple rate
+currencies and incomplete rate/FX subtotals remain explicit. Owner/Admin may
+select any employee; other members may select only themselves, enforced by the API.
+
+The result is a `resource_link` (`solidtime://exports/<random-id>`), not a public
+download URL. Read it with MCP `resources/read` before its ten-minute expiry to
+obtain the `application/pdf` base64 bytes, or discover active files through
+`resources/list`. A host can save those bytes locally or
+attach them to an explicitly authorized document/Telegram workflow. This server
+does not send reports to Telegram or any third-party service. The same PDF is
+available in Solidtime's Overview **Export > Employee PDF** menu after selecting
+one member. The deployed Solidtime extension must include `/labor-costs/employee-report`;
+older deployments return 404, not a substitute billing PDF.
+
+The inline report keeps the group overview compact on phones. Entry details are
+collapsed initially, paginated by 20, and scrolling tables have a bounded height;
+the MCP Apps SDK reports actual content size to the host instead of reserving a
+full-height canvas. Group/subgroup, date and currency changes preserve the employee filter.
+
+### MCP App and Security
+
+The report tool advertises `ui://solidtime/labor-costs.html` using the standard
+[MCP Apps extension](https://modelcontextprotocol.io/extensions/apps/overview).
+Supporting desktop hosts render the widget inline: dates, currency, grouping,
+pages and CSV/PDF downloads stay interactive. Hosts without MCP Apps still receive
+the same structured JSON/text. Node **20+** is required; the compatible 1.x Apps SDK
+is pinned rather than migrating the existing MCP server to SDK 2.x.
+
+The HTML/JavaScript bundle is served locally through MCP, with no CDN, analytics,
+direct API connection or token in the iframe. Its CSP declares empty network and
+external-resource origin lists. Data is inserted as text, never executable HTML.
+All API calls stay pinned to the configured HTTPS origin with redirects blocked;
+the server enforces role visibility. Export buffers are capped at 8 MiB and five
+files, expire after ten minutes, and live only in process memory. Restarting the
+MCP server removes them. Downloads are mediated by the host, not public URLs.
+
+### Update an Existing Codex Connection
+
+Rebuild with `npm ci && npm run build`, retain the existing Keychain launcher or
+your configured token injection, then restart **only the Solidtime MCP server**
+from Settings > MCP servers. No token belongs in source or command-line arguments.
+If your Codex configuration uses `enabled_tools`, add the read tool names above;
+otherwise an old allow list hides the new report tools. Keep `SOLIDTIME_READ_ONLY=true`
+for reporting. Reconnection and MCP Apps support depend on the host; a successful
+protocol test alone is not proof that an inline widget rendered.

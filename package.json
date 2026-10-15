@@ -1,6 +1,6 @@
 {
   "name": "solidtime-mcp-server",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "MCP server for SolidTime time tracking — start/stop timers, manage entries, projects, clients, tags, and tasks",
   "author": "Manuel",
   "license": "MIT",
@@ -13,7 +13,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && esbuild src/app/report.ts --bundle --platform=browser --format=esm --outfile=dist/app/report-ui.js",
     "dev": "tsx src/index.ts",
     "lint": "eslint src/",
     "format": "prettier --write src/",
@@ -24,12 +24,14 @@
     "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
   },
   "dependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.5",
     "@modelcontextprotocol/sdk": "1.31.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/node": "^22.10.0",
+    "esbuild": "0.25.12",
     "eslint": "^9.0.0",
     "prettier": "^3.0.0",
     "tsx": "^4.19.2",
@@ -37,7 +39,7 @@
     "typescript-eslint": "^8.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "keywords": [
     "mcp",
