@@ -43,7 +43,7 @@ export async function createServer(config: ServerConfig) {
 
   const server = new McpServer({
     name: "solidtime",
-    version: "1.3.0",
+    version: "1.3.1",
   });
 
   registerUserTools(server, api, getMemberId);
@@ -93,7 +93,7 @@ export async function createServer(config: ServerConfig) {
         "Supported ISO currencies and names. A supported currency may still lack official CBR FX quotes.",
       annotations,
     },
-    async () => dataResult(await api.get("/currencies"))
+    async () => dataResult({ data: await api.get("/currencies") })
   );
   server.registerTool(
     "solidtime_get_project",

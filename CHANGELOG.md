@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1
+
+- Wrap the currency list in a `data` object so `structuredContent` conforms to MCP instead of returning an invalid top-level array. This fixes an existing integration bug, not a Solidtime API change.
+- Verify read-only MCP tools, dual-currency employee expenses, private exports and the inline report against Solidtime v0.22.1.
+
 ## 1.1.0
 
 - Historical labor expense reports, rate histories, settings, CSV/PDF resources and opt-in rate/currency management.
