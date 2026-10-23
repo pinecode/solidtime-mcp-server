@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1
+
+- Update the pinned MCP SDK to 1.32.1 and transitive ip-address to 10.7.4, clearing the production dependency audit. The server continues to use local stdio, not the SDK's HTTP authentication/task transports.
+- Wrap the currency list in a `data` object so `structuredContent` conforms to MCP instead of returning an invalid top-level array. This fixes an existing integration bug, not a Solidtime API change.
+- Verify read-only MCP tools, dual-currency employee expenses, private exports and the inline report against Solidtime v0.22.1.
+
 ## 1.1.0
 
 - Historical labor expense reports, rate histories, settings, CSV/PDF resources and opt-in rate/currency management.
