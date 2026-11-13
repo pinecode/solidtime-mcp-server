@@ -8,6 +8,7 @@ import { registerClientTools } from "./tools/clients.js";
 import { registerTagTools } from "./tools/tags.js";
 import { registerTaskTools } from "./tools/tasks.js";
 import { registerLaborCostTools } from "./tools/labor-costs.js";
+import { registerGoalTools } from "./tools/goals.js";
 import { z } from "zod";
 
 interface ServerConfig {
@@ -15,6 +16,7 @@ interface ServerConfig {
   organizationId: string;
   apiUrl?: string;
   readOnly?: boolean;
+  goalWrites?: boolean;
 }
 
 export async function createServer(config: ServerConfig) {
@@ -43,7 +45,7 @@ export async function createServer(config: ServerConfig) {
 
   const server = new McpServer({
     name: "solidtime",
-    version: "1.3.1",
+    version: "1.4.0",
   });
 
   registerUserTools(server, api, getMemberId);
@@ -53,6 +55,12 @@ export async function createServer(config: ServerConfig) {
   registerTagTools(server, api, orgId, readOnly);
   registerTaskTools(server, api, orgId, readOnly);
   registerLaborCostTools(server, api, orgId, readOnly);
+  const goalWriter = !readOnly
+    ? api
+    : config.goalWrites
+      ? new ApiClient(config.apiUrl, config.apiToken, false)
+      : undefined;
+  registerGoalTools(server, api, orgId, goalWriter);
 
   const annotations = {
     readOnlyHint: true,

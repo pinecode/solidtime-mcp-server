@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+- Add native Goals listing, details, personal creation and partial editing with server-calculated current-period progress.
+- Allow only Goal creation/editing with `SOLIDTIME_GOALS_WRITE_ENABLED=true`, leaving timers, labor rates, payment currencies and other writes disabled in read-only mode.
+- Validate goal targets, periods, timezones and filters; preserve omitted fields and filter keys during edits. Keep Solidtime's creator-only permissions and plan limits, without exposing deletion, archiving or ownership changes.
+- Document Codex setup and cover read-only discovery, opt-in writes, permission failures, partial updates and invalid inputs in protocol tests.
+- Upgrade Zod to 4.6.7 and refresh compatible transitive dependencies to clear the production dependency audit; retain the current MCP SDK and local stdio transport.
+
 ## 1.3.1
 
 - Update the pinned MCP SDK to 1.32.1 and transitive ip-address to 10.7.4, clearing the production dependency audit. The server continues to use local stdio, not the SDK's HTTP authentication/task transports.

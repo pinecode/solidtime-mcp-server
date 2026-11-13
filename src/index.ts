@@ -8,8 +8,12 @@ async function main() {
   const organizationId = process.env.SOLIDTIME_ORGANIZATION_ID;
   const apiUrl = process.env.SOLIDTIME_API_URL;
   const mode = process.env.SOLIDTIME_READ_ONLY ?? "true";
+  const goalWrites = process.env.SOLIDTIME_GOALS_WRITE_ENABLED ?? "false";
   if (mode !== "true" && mode !== "false") {
     throw new Error("SOLIDTIME_READ_ONLY must be true or false.");
+  }
+  if (goalWrites !== "true" && goalWrites !== "false") {
+    throw new Error("SOLIDTIME_GOALS_WRITE_ENABLED must be true or false.");
   }
 
   if (!apiToken) {
@@ -29,6 +33,7 @@ async function main() {
     organizationId,
     apiUrl,
     readOnly: mode === "true",
+    goalWrites: goalWrites === "true",
   });
   const transport = new StdioServerTransport();
   await server.connect(transport);

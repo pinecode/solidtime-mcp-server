@@ -7,7 +7,8 @@ MCP server for [SolidTime](https://www.solidtime.io/) — the open-source time t
 
 ## Features
 
-- **18 read-only tools by default**, or 38 tools with explicitly enabled writes
+- **21 read-only tools by default**, with separately opt-in Goal creation/editing
+- **Personal goals** with current-period progress, daily/weekly/monthly targets and time filters
 - **Start/stop timers** with automatic active-timer detection
 - **Aggregated reports** grouped by day, week, project, client, and more
 - **Auto member_id resolution** — no manual configuration needed
@@ -38,7 +39,8 @@ Use `git checkout <reviewed-commit>` before installation to pin a reviewed revis
 | `SOLIDTIME_API_TOKEN` | Yes | — | Your SolidTime API token |
 | `SOLIDTIME_ORGANIZATION_ID` | Yes | — | Your organization UUID |
 | `SOLIDTIME_API_URL` | Yes | None | Explicit HTTPS origin of your Solidtime instance, with no path, credentials, query, or fragment |
-| `SOLIDTIME_READ_ONLY` | No | `true` | Keep `true` for reports; only `false` enables write tools |
+| `SOLIDTIME_READ_ONLY` | No | `true` | Keep `true` to block general write tools; `false` enables all supported writes |
+| `SOLIDTIME_GOALS_WRITE_ENABLED` | No | `false` | Enable only Goal creation/editing while keeping general read-only mode |
 
 Get your API token from **SolidTime > Settings > API**.
 
@@ -47,7 +49,8 @@ Get your API token from **SolidTime > Settings > API**.
 - There is no default cloud endpoint. Missing or invalid configuration prevents startup.
 - All API calls stay under `/api/v1/` on the configured HTTPS origin. Redirects are rejected.
 - Requests time out after 30 seconds. TLS verification is enabled.
-- Read-only mode hides write tools and blocks non-GET API calls independently.
+- Default read-only mode hides write tools and blocks non-GET API calls independently.
+  The optional Goals-only writer is isolated from timer, rate, payment and other tools.
 - Startup logs do not contain user names, emails, member IDs, or tokens.
 - API error responses and transport details are not echoed into MCP errors.
 - This restricts the current application code, not arbitrary modified code or dependencies.
@@ -94,6 +97,10 @@ enabled_tools = [
   "solidtime_list_clients",
   "solidtime_list_tags",
   "solidtime_list_tasks",
+  "solidtime_list_goals",
+  "solidtime_get_goal",
+  "solidtime_create_goal",
+  "solidtime_update_goal",
 ]
 
 [mcp_servers.solidtime.env]
@@ -111,9 +118,16 @@ SOLIDTIME_READ_ONLY = "true"
    or Codex, then check `/mcp` and ask for a read-only report. Registration alone
    does not prove that authentication and tool calls work.
 
-The default 18 tools cannot change data. Setting `SOLIDTIME_READ_ONLY=false`
-enables writes in the server; Codex's allowlist must also be changed to expose
-them. Only do that intentionally with an appropriately permissioned token.
+The default 21 tools cannot change data. To create and edit only your own Goals,
+add `SOLIDTIME_GOALS_WRITE_ENABLED = "true"` to `[mcp_servers.solidtime.env]`,
+leave `SOLIDTIME_READ_ONLY = "true"`, and keep the four Goals tools in
+`enabled_tools`. If using a credential-store launcher that replaces the child
+environment, explicitly pass this flag from that launcher instead. Restart the
+MCP connection after changes. Merely allowlisting a tool does not enable it.
+
+Setting `SOLIDTIME_READ_ONLY=false` instead enables all supported writes in the
+server; Codex's allowlist must also expose them. Only do that intentionally with
+an appropriately permissioned token. Neither flag changes API permissions.
 
 See the [official Codex MCP documentation](https://developers.openai.com/codex/mcp).
 
@@ -142,8 +156,36 @@ credential-store launcher, rather than embedding it in JSON configuration.
 
 ## Tools
 
-Tools that create, update, delete, or start/stop timers are available only when
-`SOLIDTIME_READ_ONLY=false`. All other tools are enabled by default.
+Tools that create, update, delete, or start/stop timers require
+`SOLIDTIME_READ_ONLY=false`, except Goals creation/editing which can separately
+be enabled with `SOLIDTIME_GOALS_WRITE_ENABLED=true`. Read tools are enabled by default.
+
+### Goals (4 tools)
+
+| Tool | Description |
+|------|-------------|
+| `solidtime_list_goals` | Paginated goals with native progress, status and current period boundaries; filter by archived status or type |
+| `solidtime_get_goal` | One visible goal with filters and current-period progress |
+| `solidtime_create_goal` | Create a personal goal for the token owner |
+| `solidtime_update_goal` | Edit supplied fields only; omitted values are preserved |
+
+Goals use Solidtime's native API (v0.22.1 or compatible). Core supports personal
+goals, private to their creator even from Owner/Admin; organization goals require
+Solidtime's optional team-goals extension. Creation/editing here is personal-only.
+Server permissions and plan limits remain authoritative. These tools do not
+delete/archive goals, transfer ownership, or create goals for colleagues.
+
+Targets are integer seconds: 6 hours = `21600`, 20 hours = `72000`. Choose
+`at_least` or `less_than` and a `day`, `week` or `month` period. Timezone and week
+start default to the current user's settings when creating a goal. Filters
+support projects, tasks, clients, tags, billable status, and work/break time.
+Omitted filters include all matching time; native progress can include a running
+timer, unlike the completed-entry labor expense reports.
+
+When editing filters, supplied keys merge with the latest server filters; `null`
+or `[]` clears only that filter. Other goal fields are sent as a partial update.
+Progress is returned by Solidtime, not recomputed by this MCP. List responses
+preserve `data`, `meta` and `links`; follow pagination for a complete list.
 
 ### Time Entries (8 tools)
 
@@ -198,6 +240,15 @@ Tools that create, update, delete, or start/stop timers are available only when
 | `solidtime_get_current_user` | Get your user profile and resolved member ID |
 
 ## Usage Examples
+
+**Read goals:**
+> "Show my goals and how much time is left this week"
+
+**Create a goal (Goals writes enabled):**
+> "Create a personal goal: at least 20 hours per week on the website project"
+
+**Edit a goal (Goals writes enabled):**
+> "Change my website goal to 25 hours per week, keeping its current filters"
 
 **Start tracking time:**
 > "Start a timer for the website redesign project"
