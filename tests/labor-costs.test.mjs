@@ -73,6 +73,18 @@ test("payment reports retain exact API money and weighted FX without changing re
   assert.ok(resource.contents[0].text.includes("Payment estimate"));
 });
 
+test("currency arrays use an object envelope required by MCP structuredContent", async t => {
+  const currencies = [{code:"USD",name:"US Dollar",symbol:"$"},{code:"RUB",name:"Russian Ruble",symbol:"₽"}];
+  const client = await setup(t, async url => {
+    assert.equal(url.pathname,"/api/v1/currencies");
+    return Response.json(currencies);
+  });
+  const result = await client.callTool({name:"solidtime_get_currencies",arguments:{}});
+  assert.notEqual(result.isError,true);
+  assert.deepEqual(result.structuredContent,{data:currencies});
+  assert.deepEqual(JSON.parse(result.content[0].text),result.structuredContent);
+});
+
 test("current personal rates use the scoped extension endpoint", async t => {
   const client = await setup(t, async url => {
     assert.equal(url.pathname,`/api/v1/organizations/${org}/labor-costs/member-rates/current`);
